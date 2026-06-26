@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/api/config.php';
 
-$sqlFile = __DIR__ . '/../database/inspection_scolaire.sql';
+$sqlFile = __DIR__ . ' /../database/inspection_scolaire.sql';
 if (!file_exists($sqlFile)) {
     echo json_encode(['error' => 'SQL file not found: ' . $sqlFile]);
     exit(1);

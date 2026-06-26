@@ -37,8 +37,16 @@ try {
         json_response(['status' => 'ok']);
     }
 
-    if ($parts === ['auth', 'login'] && $method === 'POST') {
+        if ($parts === ['auth', 'login'] && $method === 'POST') {
         login();
+    }
+
+    if ($parts === ['auth', 'logout'] && $method === 'POST') {
+        logout();
+    }
+
+    if ($parts === ['auth', 'me'] && $method === 'GET') {
+        who_am_i();
     }
 
     if ($parts === ['users'] && $method === 'GET') {
@@ -76,6 +84,63 @@ function json_response(array $data, int $status = 200): void
     exit;
 }
 
+function get_authorization_token(): string
+{
+    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if (!$header) {
+        http_response_code(401);
+        json_response(['error' => 'Authorization header missing']);
+    }
+
+    if (!preg_match('/^Bearer\s+(.+)$/i', trim($header), $matches)) {
+        http_response_code(401);
+        json_response(['error' => 'Invalid authorization header']);
+    }
+
+    return $matches[1];
+}
+
+function get_current_session(): array
+{
+    $token = get_authorization_token();
+    $stmt = db()->prepare(
+        'SELECT s.token, u.id AS user_id, u.nom, u.email, u.role
+         FROM session_tokens s
+         INNER JOIN users u ON u.id = s.user_id
+         WHERE s.token = :token
+         LIMIT 1'
+    );
+    $stmt->execute(['token' => $token]);
+    $session = $stmt->fetch();
+    if (!$session) {
+        http_response_code(401);
+        json_response(['error' => 'Session invalide ou expirée']);
+    }
+
+    return $session;
+}
+
+function get_current_user(): array
+{
+    $session = get_current_session();
+    return [
+        'id' => (int)$session['user_id'],
+        'nom' => $session['nom'],
+        'email' => $session['email'],
+        'role' => $session['role'],
+    ];
+}
+
+function require_admin(): array
+{
+    $user = get_current_user();
+    if ($user['role'] !== 'ADMIN') {
+        http_response_code(403);
+        json_response(['error' => 'Accès admin requis']);
+    }
+    return $user;
+}
+
 function login(): void
 {
     $data = input();
@@ -98,20 +163,40 @@ function login(): void
         $user = ['id' => (int)db()->lastInsertId(), 'nom' => $name, 'email' => $email, 'role' => $role];
     }
 
+    $token = bin2hex(random_bytes(32));
+    $stmt = db()->prepare('INSERT INTO session_tokens (user_id, token) VALUES (:user_id, :token)');
+    $stmt->execute(['user_id' => $user['id'], 'token' => $token]);
+
     json_response([
-        'token' => 'local-mysql-token-' . $user['id'],
+        'token' => $token,
         'user' => normalize_user($user),
     ]);
 }
 
+function logout(): void
+{
+    $token = get_authorization_token();
+    $stmt = db()->prepare('DELETE FROM session_tokens WHERE token = :token');
+    $stmt->execute(['token' => $token]);
+    json_response(['status' => 'logged_out']);
+}
+
+function who_am_i(): void
+{
+    $user = get_current_user();
+    json_response(['data' => normalize_user($user)]);
+}
+
 function list_users(): void
 {
+    require_admin();
     $rows = db()->query('SELECT id, nom, email, role FROM users ORDER BY id ASC')->fetchAll();
     json_response(['data' => array_map('normalize_user', $rows)]);
 }
 
 function handle_etablissements(string $method, array $parts): void
 {
+    get_current_user();
     $id = isset($parts[1]) ? (int)$parts[1] : null;
 
     if ($method === 'GET' && !$id) {
@@ -120,6 +205,7 @@ function handle_etablissements(string $method, array $parts): void
     }
 
     if ($method === 'POST' && !$id) {
+        require_admin();
         $data = input();
         $stmt = db()->prepare(
             'INSERT INTO etablissements (nom, type, adresse, ville, region, score)
@@ -137,6 +223,7 @@ function handle_etablissements(string $method, array $parts): void
     }
 
     if ($method === 'PUT' && $id) {
+        require_admin();
         $data = input();
         $stmt = db()->prepare(
             'UPDATE etablissements
@@ -155,6 +242,7 @@ function handle_etablissements(string $method, array $parts): void
     }
 
     if ($method === 'DELETE' && $id) {
+        require_admin();
         $stmt = db()->prepare('DELETE FROM etablissements WHERE id = :id');
         $stmt->execute(['id' => $id]);
         json_response(['deleted' => true]);
@@ -166,6 +254,7 @@ function handle_etablissements(string $method, array $parts): void
 function handle_inspections(string $method, array $parts): void
 {
     if ($method === 'GET' && count($parts) === 1) {
+        get_current_user();
         $rows = db()->query(
             'SELECT i.*, e.nom AS etablissement
              FROM inspections i
@@ -176,6 +265,7 @@ function handle_inspections(string $method, array $parts): void
     }
 
     if ($method === 'POST' && count($parts) === 1) {
+        get_current_user();
         $data = input();
         $stmt = db()->prepare(
             'INSERT INTO inspections (etablissement_id, salle, statut, date_inspection, score_global, anomalies)
@@ -198,11 +288,13 @@ function handle_inspections(string $method, array $parts): void
 function handle_rapports(string $method, array $parts): void
 {
     if ($method === 'GET' && count($parts) === 1) {
+        get_current_user();
         $rows = db()->query('SELECT * FROM rapports ORDER BY date_generation DESC, id DESC')->fetchAll();
         json_response(['data' => array_map('normalize_rapport', $rows)]);
     }
 
     if ($method === 'POST' && count($parts) === 1) {
+        get_current_user();
         $data = input();
         $stmt = db()->prepare(
             'INSERT INTO rapports (inspection_id, titre, etablissement, date_generation, statut, anomalies)

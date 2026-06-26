@@ -67,17 +67,22 @@ function App() {
     setIsLoadingData(true);
     setDataError("");
     try {
-      const [establishmentsResponse, inspectionsResponse, reportsResponse, usersResponse] = await Promise.all([
+      const requests = [
         api.get(endpoints.establishments),
         api.get(endpoints.inspections),
         api.get(endpoints.reports),
-        api.get(endpoints.users),
-      ]);
+      ];
+
+      if (currentUser?.role === roles.admin) {
+        requests.push(api.get(endpoints.users));
+      }
+
+      const [establishmentsResponse, inspectionsResponse, reportsResponse, usersResponse] = await Promise.all(requests);
 
       setEstablishments(establishmentsResponse.data.data || []);
       setInspections(inspectionsResponse.data.data || []);
       setReports(reportsResponse.data.data || []);
-      setUsersList(usersResponse.data.data || []);
+      setUsersList(usersResponse?.data?.data || []);
     } catch (error) {
       setDataError(error.response?.data?.error || "Impossible de charger les donnees MySQL.");
     } finally {
@@ -118,7 +123,7 @@ function App() {
       case "reports":
         return <ReportsView reports={reports} />;
       case "admin":
-        return <AdminView users={usersList} />;
+        return <AdminView users={usersList} onUserCreated={(user) => setUsersList((items) => [user, ...items])} />;
       default:
         return <DashboardView inspections={inspections} establishments={establishments} setActiveView={setActiveView} />;
     }
@@ -1040,7 +1045,32 @@ function ReportsView({ reports }) {
   );
 }
 
-function AdminView({ users }) {
+function AdminView({ users, onUserCreated }) {
+  const [email, setEmail] = useState("");
+  const [nom, setNom] = useState("");
+  const [role, setRole] = useState(roles.inspector);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const createUser = async (event) => {
+    event.preventDefault();
+    if (!email.trim()) return;
+    setIsSaving(true);
+    setError("");
+
+    try {
+      const response = await api.post(endpoints.users, { email: email.trim(), nom: nom.trim() || undefined, role });
+      onUserCreated(response.data.data);
+      setEmail("");
+      setNom("");
+      setRole(roles.inspector);
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || "Impossible de creer l'utilisateur dans MySQL.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -1067,14 +1097,41 @@ function AdminView({ users }) {
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Endpoints prevus</h2>
-        <div className="mt-4 space-y-2">
-          {Object.entries(endpoints).slice(0, 6).map(([key, value]) => (
-            <div key={key} className="rounded-md border border-slate-200 p-3 text-sm">
-              <p className="font-semibold">{key}</p>
-              <p className="mt-1 break-all text-xs text-slate-500">{typeof value === "function" ? value(":id") : value}</p>
-            </div>
-          ))}
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold">Ajouter un utilisateur</h2>
+          <p className="mt-1 text-sm text-slate-500">Creer un compte admin ou inspecteur persistant en base.</p>
+        </div>
+
+        {error && <p className="mb-4 rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">{error}</p>}
+
+        <form className="space-y-4" onSubmit={createUser}>
+          <Field label="Nom" value={nom} onChange={setNom} />
+          <Field label="Email" value={email} onChange={setEmail} />
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
+            <select
+              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/15"
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+            >
+              <option value={roles.inspector}>Inspecteur</option>
+              <option value={roles.admin}>Administrateur</option>
+            </select>
+          </label>
+
+          <button
+            className="inline-flex h-11 w-full items-center justify-center rounded-md bg-ocean px-4 text-sm font-semibold text-white transition hover:bg-ocean-600"
+            type="submit"
+            disabled={isSaving}
+          >
+            {isSaving ? "Creation..." : "Creer l'utilisateur"}
+          </button>
+        </form>
+
+        <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <p className="font-semibold">Conseil</p>
+          <p className="mt-2">Les utilisateurs crees ici sont enregistres dans la base MySQL et visibles via phpMyAdmin.</p>
         </div>
       </section>
     </div>
