@@ -1,0 +1,16 @@
+# YOLO Dataset Configuration - School Equipment Inspection
+# Classes d'equipements scolaires pour inspection
+
+path: ../dataset
+train: train/images
+val: val/images
+test: test/images
+
+nc: 6
+names:
+  0: Table
+  1: Chaise
+  2: Ordinateur
+  3: Imprimante
+  4: Videoprojecteur
+  5: Extincteur
