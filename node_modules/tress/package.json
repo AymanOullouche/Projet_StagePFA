@@ -1,0 +1,32 @@
+{
+  "name": "tress",
+  "version": "1.1.4",
+  "description": "Easy to use asynchronous job queue. Successor of 'caolan/async.queue'.",
+  "main": "index.js",
+  "author": "astur <astur@yandex.ru> (http://kozlov.am/)",
+  "scripts": {
+    "test": "eslint . && nyc ava -v"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/astur/tress.git"
+  },
+  "engines": {
+    "node": ">8.0.0"
+  },
+  "dependencies": {
+    "easytype": "^1.0.1",
+    "hard-prop": "^1.0.1"
+  },
+  "devDependencies": {
+    "ava": "^0.25.0",
+    "eslint": "^5.4.0",
+    "eslint-config-astur": "^1.6.1",
+    "nyc": "^12.0.2"
+  },
+  "keywords": [
+    "async",
+    "queue"
+  ],
+  "license": "MIT"
+}

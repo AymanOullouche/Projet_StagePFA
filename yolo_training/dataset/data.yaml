@@ -1,7 +1,7 @@
 # YOLO Dataset Configuration - School Equipment Inspection
 # Classes d'equipements scolaires pour inspection
 
-path: ../dataset
+# Chemins relatifs au dossier du fichier data.yaml
 train: train/images
 val: val/images
 test: test/images

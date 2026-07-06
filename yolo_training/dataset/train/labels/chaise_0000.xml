@@ -1,0 +1,14 @@
+<annotation>
+	<folder>images</folder>
+	<filename>chaise_0000.jpg</filename>
+	<path>D:\ENSIASD\TP S4\Projet_StagePFA\yolo_training\dataset\train\images\chaise_0000.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>460</width>
+		<height>306</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+</annotation>
