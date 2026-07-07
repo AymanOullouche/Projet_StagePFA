@@ -730,11 +730,18 @@ function InspectionsView({ establishments, inspections, setInspections, onReport
         }
       }
 
-      // 3. Lancer l'analyse YOLO (backend avec YOLO11 reelle)
+      // 3. Lancer l'analyse YOLO fusionnee (toutes les images)
       let yoloResults = null;
       if (imageResults.length > 0) {
-        const analyzeResponse = await api.post(endpoints.analyzeImage(imageResults[0].id));
-        yoloResults = analyzeResponse.data.data;
+        if (imageResults.length > 1) {
+          // AMELIORATION #5: Fusion multi-images via analyze-all
+          const analyzeResponse = await api.post(endpoints.analyzeAllImages(savedInspection.id));
+          yoloResults = analyzeResponse.data.data;
+        } else {
+          // Image unique
+          const analyzeResponse = await api.post(endpoints.analyzeImage(imageResults[0].id));
+          yoloResults = analyzeResponse.data.data;
+        }
       }
 
       // 4. Recharger les donnees
@@ -743,15 +750,8 @@ function InspectionsView({ establishments, inspections, setInspections, onReport
       ]);
       const updatedInspection = updatedInspections.data.data.find(i => i.id === savedInspection.id);
 
-      // Generer des recommandations basees sur les anomalies YOLO
-      const recommendations = [];
-      if (yoloResults?.findings) {
-        for (const finding of yoloResults.findings) {
-          if (finding.includes("manquant")) {
-            recommendations.push("Planifier l'achat ou la reparation des equipements manquants.");
-          }
-        }
-      }
+      // AMELIORATION #6: Recommandations dynamiques depuis le backend
+      const recommendations = yoloResults?.recommendations || [];
       if (!recommendations.length) {
         recommendations.push(
           "Verifier la conformite des equipements par rapport aux normes en vigueur.",
@@ -765,6 +765,7 @@ function InspectionsView({ establishments, inspections, setInspections, onReport
         equipments: yoloResults?.equipments || [],
         anomalies: yoloResults?.anomalies || [],
         findings: yoloResults?.findings || [],
+        norm_details: yoloResults?.norm_details || [],
         recommendations: recommendations,
         yoloScore: yoloResults?.scoreGlobal || 0,
         roomType: yoloResults?.roomType || roomType,
@@ -919,8 +920,8 @@ function InspectionsView({ establishments, inspections, setInspections, onReport
               <h3 className="mb-3 text-sm font-semibold">Equipements detectes</h3>
               {analysis.equipments.length > 0 ? (
                 <div className="space-y-2">
-                  {analysis.equipments.map((equipment) => (
-                    <div key={equipment.id} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                  {analysis.equipments.map((equipment, idx) => (
+                    <div key={equipment.id || idx} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
                       <div>
                         <p className="font-semibold">{equipment.nom}</p>
                         <p className="text-xs text-slate-500">Confiance: {Math.round(equipment.confiance * 100)}%</p>
@@ -928,6 +929,20 @@ function InspectionsView({ establishments, inspections, setInspections, onReport
                       <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold">{equipment.quantite}</span>
                     </div>
                   ))}
+                  {analysis.norm_details && analysis.norm_details.length > 0 && (
+                    <div className="mt-4 border-t border-slate-100 pt-3">
+                      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Conformite normes</h4>
+                      {analysis.norm_details.map((norm, idx) => (
+                        <div key={idx} className="flex items-center justify-between rounded-md px-3 py-1.5 text-xs">
+                          <span className="text-slate-600">{norm.equipement}</span>
+                          <span className={norm.conforme ? "text-green-600 font-semibold" : "text-red-500 font-semibold"}>
+                            {norm.detecte}/{norm.requis}
+                            {!norm.conforme && ` (manque ${norm.manquants})`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">En attente des resultats de detection YOLO.</p>

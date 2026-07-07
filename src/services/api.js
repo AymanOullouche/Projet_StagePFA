@@ -23,6 +23,7 @@ export const endpoints = {
   serveImage: (imageId) => `/images/${imageId}`,
   analyzeImage: (imageId) => `/images/${imageId}/analyze`,
   ragAsk: "/rag/questions",
+  analyzeAllImages: (inspectionId) => `/inspections/${inspectionId}/analyze-all`,
   ragDocuments: "/rag/documents",
   reports: "/rapports",
   reportDetail: (reportId) => `/rapports/${reportId}`,

@@ -343,6 +343,53 @@ def analyze_image(image_id: int, db: Session = Depends(get_db), current_user = D
             "scoreGlobal": result["scoreGlobal"],
             "status": result["status"],
             "findings": result["findings"],
+            "recommendations": result.get("recommendations", []),
+        }
+    }
+
+
+@app.post(f"{API_PREFIX}/inspections/{{inspection_id}}/analyze-all")
+def analyze_all_images(inspection_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)) -> dict:
+    """Analyse TOUTES les images d'une inspection et FUSIONNE les resultats."""
+    inspection = crud.get_inspection(db, inspection_id)
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection introuvable")
+    images = crud.get_inspection_images(db, inspection_id)
+    if not images:
+        raise HTTPException(status_code=400, detail="Aucune image trouvee")
+    salle = (inspection.salle or "").strip()
+    if any(k in salle for k in ["informatique", "info"]):
+        room_type = "Salle informatique"
+    elif "laboratoire" in salle.lower():
+        room_type = "Laboratoire"
+    else:
+        room_type = "Salle standard"
+    filenames = [img.stored_filename for img in images if img.stored_filename]
+    if not filenames:
+        raise HTTPException(status_code=400, detail="Aucune image stockee")
+    try:
+        result = yolo_service.analyze_multiple_images(filenames, room_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur YOLO fusion: {str(e)}")
+    inspection.score_global = result["scoreGlobal"]
+    inspection.anomalies = result["nbAnomalies"]
+    inspection.statut = "TERMINEE"
+    db.commit()
+    db.refresh(inspection)
+    return {
+        "data": {
+            "inspectionId": inspection.id,
+            "imagesAnalyzed": len(filenames),
+            "roomType": room_type,
+            "equipments": result["equipments"],
+            "norms": result["norms"],
+            "norm_details": result["norm_details"],
+            "anomalies": result["anomalies"],
+            "nbAnomalies": result["nbAnomalies"],
+            "scoreGlobal": result["scoreGlobal"],
+            "status": result["status"],
+            "findings": result["findings"],
+            "recommendations": result.get("recommendations", []),
         }
     }
 
