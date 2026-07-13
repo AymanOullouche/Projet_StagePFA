@@ -1,0 +1,20 @@
+Normes pour les laboratoires scientifiques
+
+1. EQUIPEMENTS SPECIFIQUES:
+   - Tables de laboratoire: 10 tables resistantes aux produits chimiques
+   - Chaises: 20 chaises avec revetement non poreux
+   - Ovins: 2 par salle (securite chimique)
+   - Douche oculaire: 1 par salle
+   - Poste de secours: equipe
+
+2. STOCKAGE:
+   - Armoire a produits chimiques securisee
+   - Ventilation mecanique forcee
+   - Extracteur d'air
+   - Sol resistant aux produits chimiques
+
+3. SECURITE:
+   - Kit premiers secours complet
+   - Fiche de donnees securite (FDS) pour chaque produit
+   - Formation obligatoire des enseignants
+   - Inspection trimestrielle obligatoire

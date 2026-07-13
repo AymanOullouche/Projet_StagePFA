@@ -1,0 +1,18 @@
+Question streaming...
+Status: 200
+[META] mode=RAG (Ollama + ChromaDB) conf=0.8
+Bonjour ! En tant qu'inspecteur, je suis chargé de vérifier l'état des salles informatiques dans les établissements scolaires. Pour cela, j'ai besoin de connaître les normes attendues pour ces espaces.
+
+Je vais consulter le système IA qui détecte les anomalies et me fournira les informations nécessaires. Après avoir récupéré les données, je vais procéder à l'analyse et générer un rapport détaillé.
+
+Voici les normes attendues pour une salle informatique :
+
+- La température devrait être comprise entre 20°C et 25°C.
+- L'humidité relative doit être comprise entre 40% et 60%.
+- Les équipements doivent être installés de manière sécurisée, avec des câbles protégés et des connecteurs stables.
+- Les écrans doivent être nettoyés régulièrement pour éviter les bactéries et les virus.
+- Les systèmes d'information doivent être mis à jour régulièrement pour garantir la sécurité et la performance.
+
+Je vais maintenant charger les images de la salle informatique pour vérifier si les normes sont respectées. Le système IA détect
+[DONE]
+Completed

@@ -1,0 +1,11 @@
+[RAG] Embeddings: sentence-transformers/all-MiniLM-L6-v2
+[RAG] ChromaDB: D:\ENSIASD\TP S4\Projet_StagePFA\backend\chroma_db
+[RAG] Ollama: llama3
+[RAG] Ollama connecte
+[RAG] Chain prete
+[RAG] Service initialise
+vector_store is None: False
+llm is None: False
+qa_chain is None: False
+get_stats() returned: {'status': 'active', 'total_chunks': 0, 'total_documents': 0, 'embedding_model': 'sentence-transformers/all-MiniLM-L6-v2', 'llm': 'llama3'}
+ask() returned: {'answer': "Erreur: 'VectorStoreRetriever' object has no attribute 'get_relevant_documents'", 'sources': [], 'confidence': 0.0}

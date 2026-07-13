@@ -12,6 +12,7 @@ WORLD_MODEL_PATH = PROJECT_ROOT / "yolov8m-worldv2.pt"
 WORLD_CLASSES_EN = [
     "table","desk","dining table","chair","office chair",
     "computer monitor","desktop computer","laptop","screen",
+    "pc computer","workstation computer","school computer","office computer",
     "printer","projector","fire extinguisher",
     "mouse","computer mouse","keyboard","computer keyboard",
 ]
@@ -20,6 +21,8 @@ EN_TO_FR = {
     "chair":"Chaise","office chair":"Chaise",
     "computer monitor":"Ordinateur","desktop computer":"Ordinateur",
     "laptop":"Ordinateur","screen":"Ordinateur",
+    "pc computer":"Ordinateur","workstation computer":"Ordinateur",
+    "school computer":"Ordinateur","office computer":"Ordinateur",
     "printer":"Imprimante","projector":"Videoprojecteur",
     "fire extinguisher":"Extincteur",
     "mouse":"Souris","computer mouse":"Souris",
@@ -29,7 +32,7 @@ MAJOR_EQUIPMENTS = {"Table","Chaise","Ordinateur","Videoprojecteur","Extincteur"
 
 # Amelioration #3: Seuils de confiance par classe
 PER_CLASS_THRESHOLDS = {
-    "Table":0.08,"Chaise":0.10,"Ordinateur":0.12,
+    "Table":0.08,"Chaise":0.10,"Ordinateur":0.10,  # AMELIORATION: baissé de 0.12 pour détecter + d'ordinateurs,
     "Imprimante":0.18,"Videoprojecteur":0.15,
     "Extincteur":0.18,"Souris":0.10,"Clavier":0.10,
 }

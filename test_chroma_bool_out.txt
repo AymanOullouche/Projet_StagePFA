@@ -1,0 +1,10 @@
+[RAG] Embeddings: sentence-transformers/all-MiniLM-L6-v2
+[RAG] ChromaDB: D:\ENSIASD\TP S4\Projet_StagePFA\backend\chroma_db
+[RAG] Ollama: llama3
+[RAG] Ollama connecte
+[RAG] Chain prete
+[RAG] Service initialise
+vector_store type: <class 'langchain_community.vectorstores.chroma.Chroma'>
+vector_store is None: False
+bool(vector_store): False
+len(vector_store): 0

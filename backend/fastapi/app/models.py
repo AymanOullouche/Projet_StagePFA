@@ -49,6 +49,7 @@ class Inspection(Base):
     date_inspection = Column(Date, nullable=False)
     score_global = Column(Integer, nullable=False, default=0)
     anomalies = Column(Integer, nullable=False, default=0)
+    resultat_analyse = Column(Text, nullable=True)  # JSON du dernier resultat YOLO (equipements, anomalies, gravite)
     created_at = Column(DateTime, default=datetime.utcnow)
     etablissement = relationship("Etablissement", back_populates="inspections")
     images = relationship("InspectionImage", back_populates="inspection", cascade="all, delete")

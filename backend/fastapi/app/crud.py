@@ -202,6 +202,22 @@ def get_documents(session: Session) -> List[models.Document]:
     return session.query(models.Document).order_by(models.Document.date_import.desc()).all()
 
 
+
+def create_document(session: Session, titre: str, file_path: Path) -> models.Document:
+    document = models.Document(
+        titre=titre,
+        statut="Importe",
+        content="",
+        date_import=date.today(),
+    )
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+def get_document(session: Session, document_id: int) -> Optional[models.Document]:
+    return session.query(models.Document).filter(models.Document.id == document_id).first()
+
+
 def initialize_documents(session: Session) -> None:
     if session.query(models.Document).count() > 0:
         return

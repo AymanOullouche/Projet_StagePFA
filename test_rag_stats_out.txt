@@ -1,0 +1,11 @@
+[RAG] Embeddings: sentence-transformers/all-MiniLM-L6-v2
+[RAG] ChromaDB: D:\ENSIASD\TP S4\Projet_StagePFA\backend\chroma_db
+[RAG] Ollama: llama3
+[RAG] Ollama connecte
+[RAG] Chain prete
+[RAG] Service initialise
+vector_store is None: False
+llm is None: False
+qa_chain is None: False
+get_stats() returned: {'status': 'unavailable'}
+ask() returned: {'answer': 'RAG non initialise.', 'sources': [], 'confidence': 0.0}

@@ -1,0 +1,27 @@
+Normes pour les salles informatiques scolaires
+
+1. EQUIPEMENTS OBLIGATOIRES:
+   - Ordinateurs: 1 par eleve (minimum 12 postes pour une classe)
+   - Tables: 12 tables individuelles
+   - Chaises: 12 chaises ergonomiques
+   - Videoprojecteur: 1 par salle
+   - Extincteur: 1 extincteur AB obligatoire
+   - Imprimante: 1 imprimante réseau partagee
+
+2. SECURITE:
+   - Extincteur AB obligatoire a moins de 10 metres
+   - Aeration naturelle ou mecanique
+   - Prix des ordinateurs adapte aux eleves
+   - Cables proteges contre la decharge electrique
+
+3. NORMES ELECTRIQUES:
+   - Prises electriques: minimum 2 par poste
+   - Multiprise avec interrupteur
+   - Mise a la terre obligatoire
+   - Disjoncteur differentiel 30mA
+
+4. RESEAU:
+   - Connexion internet haut debit
+   - Switch 24 ports minimum
+   - Cable RJ45 pour chaque poste
+   - Point d'acces WiFi securise

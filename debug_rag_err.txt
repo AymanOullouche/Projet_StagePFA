@@ -1,0 +1,1 @@
+D:\ENSIASD\TP S4\Projet_StagePFA\.venv\Scripts\python.exe: can't open file 'D:\\ENSIASD\\TP': [Errno 2] No such file or directory

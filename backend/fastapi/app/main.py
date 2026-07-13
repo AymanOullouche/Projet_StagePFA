@@ -1,11 +1,18 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
+import json
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+
+try:
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
+except ImportError:
+    FPDF_AVAILABLE = False
 
 from . import crud, models, schemas
 from .database import Base, SessionLocal, engine
@@ -20,6 +27,7 @@ from .auth import (
     verify_password,
 )
 from .yolo_service import yolo_service
+from .rag_service import rag_service
 
 app = FastAPI(title="Inspection Scolaire API", version="0.1.0")
 
@@ -327,6 +335,7 @@ def analyze_image(image_id: int, db: Session = Depends(get_db), current_user = D
     inspection.score_global = result["scoreGlobal"]
     inspection.anomalies = result["nbAnomalies"]
     inspection.statut = "TERMINEE"
+    inspection.resultat_analyse = json.dumps(result, ensure_ascii=False, default=str)
     db.commit()
     db.refresh(inspection)
 
@@ -374,6 +383,7 @@ def analyze_all_images(inspection_id: int, db: Session = Depends(get_db), curren
     inspection.score_global = result["scoreGlobal"]
     inspection.anomalies = result["nbAnomalies"]
     inspection.statut = "TERMINEE"
+    inspection.resultat_analyse = json.dumps(result, ensure_ascii=False, default=str)
     db.commit()
     db.refresh(inspection)
     return {
@@ -436,16 +446,283 @@ def get_rapport_pdf(rapport_id: int, db: Session = Depends(get_db), current_user
 @app.get(f"{API_PREFIX}/rag/documents")
 def list_rag_documents(db: Session = Depends(get_db), current_user = Depends(get_current_user)) -> dict:
     documents = crud.get_documents(db)
-    return {"data": [schemas.DocumentRead.model_validate(doc).model_dump() for doc in documents]}
+    stats = rag_service.get_stats()
+    return {
+        "data": {
+            "documents": [schemas.DocumentRead.model_validate(doc).model_dump() for doc in documents],
+            "rag_stats": stats,
+        }
+    }
 
 
 @app.post(f"{API_PREFIX}/rag/questions")
 def rag_question(data: schemas.RagQuestion, db: Session = Depends(get_db), current_user = Depends(get_current_user)) -> dict:
-    answer, sources = crud.answer_rag_question(db, data.question)
+    result = rag_service.ask(data.question, top_k=4)
     return {
         "data": {
             "question": data.question,
-            "answer": answer,
-            "source_documents": [schemas.DocumentRead.model_validate(doc).model_dump() for doc in sources],
+            "answer": result.get("answer", "Pas de reponse."),
+            "sources": result.get("sources", []),
+            "confidence": result.get("confidence", 0.0),
+            "mode": result.get("mode", "Unknown"),
         }
     }
+
+
+@app.post(f"{API_PREFIX}/rag/questions/stream")
+def rag_question_stream(data: schemas.RagQuestion, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    """Version streaming de /rag/questions. Renvoie un flux NDJSON
+    (un objet JSON par ligne) consommable progressivement par le frontend."""
+    def generate():
+        try:
+            for chunk in rag_service.ask_stream(data.question, top_k=3):
+                yield (json.dumps(chunk, ensure_ascii=False) + "\n").encode("utf-8")
+        except Exception as e:
+            yield (json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False) + "\n").encode("utf-8")
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+@app.post(f"{API_PREFIX}/rag/documents/upload")
+async def upload_rag_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont autorises")
+    
+    rag_dir = UPLOADS_DIR.parent / "rag_documents"
+    rag_dir.mkdir(parents=True, exist_ok=True)
+    
+    # D'abord creer le document en base pour obtenir l'ID
+    document = crud.create_document(db, titre=file.filename, file_path=Path(''))
+    
+    # Sauvegarder le fichier avec l'ID du document comme prefixe
+    file_path = rag_dir / f"{document.id}_{file.filename}"
+    
+    with open(file_path, 'wb') as f:
+        content_bytes = await file.read()
+        f.write(content_bytes)
+    
+    # Mettre a jour le chemin du fichier
+    document.content = str(file_path)
+    db.commit()
+    db.refresh(document)
+    
+    return {
+        "data": {
+            "id": document.id,
+            "titre": document.titre,
+            "statut": document.statut,
+            "date_import": document.date_import.isoformat(),
+            "message": "Document importe. Cliquez sur 'Indexer' pour l'analyser.",
+        }
+    }
+
+@app.post(f"{API_PREFIX}/rag/documents/{{document_id}}/index")
+def index_document(document_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)) -> dict:
+    document = crud.get_document(db, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    file_path = None
+    for f in (UPLOADS_DIR.parent / "rag_documents").glob(f"{document_id}_*"):
+        file_path = f
+        break
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Fichier non trouve")
+    result = rag_service.ingest_pdf(file_path, document.id, document.titre)
+    if result.get("status") == "success":
+        document.statut = "Indexe"
+        db.commit()
+        db.refresh(document)
+    return {"data": result}
+
+@app.delete(f"{API_PREFIX}/rag/documents/{{document_id}}")
+def delete_rag_document(document_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)) -> dict:
+    document = crud.get_document(db, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    result = rag_service.delete_document(document_id)
+    if result.get("status") == "success":
+        db.delete(document)
+        db.commit()
+    return {"data": result}
+
+
+def generate_report_pdf(rapport, inspection) -> bytes:
+    if not FPDF_AVAILABLE:
+        raise RuntimeError("fpdf2 n'est pas installe")
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # Couleurs
+    BLUE = (0, 90, 156)
+    LIGHT_BLUE = (230, 242, 255)
+    DARK = (50, 50, 50)
+    GRAY = (100, 100, 100)
+
+    # === EN-TETE ===
+    pdf.set_fill_color(*BLUE)
+    pdf.rect(0, 0, 210, 40, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(10, 8)
+    pdf.cell(0, 10, "RAPPORT D'INSPECTION", ln=True, align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(10, 20)
+    pdf.cell(0, 8, f"N° {rapport.id}  |  {rapport.date_generation}", ln=True, align="C")
+    pdf.set_xy(10, 28)
+    pdf.cell(0, 8, f"Plateforme d'Inspection Scolaire", ln=True, align="C")
+
+    # === INFOS GENERALES ===
+    pdf.ln(50)
+    pdf.set_fill_color(*LIGHT_BLUE)
+    pdf.rect(10, pdf.get_y(), 190, 8, "F")
+    pdf.set_text_color(*DARK)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "  Informations generales", ln=True)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*DARK)
+    rows = [
+        ("Titre", rapport.titre),
+        ("Etablissement", rapport.etablissement),
+        ("Date de generation", str(rapport.date_generation)),
+        ("Statut", rapport.statut),
+        ("Anomalies signalees", str(rapport.anomalies)),
+    ]
+    if inspection:
+        rows.append(("Inspection ID", str(inspection.id)))
+        rows.append(("Salle", inspection.salle))
+        rows.append(("Date inspection", str(inspection.date_inspection)))
+        rows.append(("Statut inspection", inspection.statut))
+
+    for label, value in rows:
+        pdf.set_x(14)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(45, 6, label, ln=False)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 6, value, ln=True)
+
+    # === SCORE GLOBAL ===
+    if inspection:
+        pdf.ln(6)
+        pdf.set_fill_color(*LIGHT_BLUE)
+        pdf.rect(10, pdf.get_y(), 190, 8, "F")
+        pdf.set_text_color(*DARK)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, "  Score global", ln=True)
+
+        score = inspection.score_global
+        if score >= 80:
+            scolor = (34, 197, 94)
+            label = "Excellent"
+        elif score >= 60:
+            scolor = (234, 179, 8)
+            label = "Moyen"
+        else:
+            scolor = (239, 68, 68)
+            label = "Insuffisant"
+
+        pdf.ln(6)
+        # Barre de progression
+        pdf.set_fill_color(220, 220, 220)
+        pdf.rect(14, pdf.get_y(), 140, 12, "F")
+        pdf.set_fill_color(*scolor)
+        bar_w = max(20, int(140 * score / 100))
+        pdf.rect(14, pdf.get_y(), bar_w, 12, "F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_xy(14, pdf.get_y() + 1)
+        pdf.cell(140, 10, f"  {score}/100  |  {label}", align="C")
+        pdf.ln(16)
+
+        # === ANOMALIES DETAILLEES (REELLES) ===
+        pdf.set_fill_color(*LIGHT_BLUE)
+        pdf.rect(10, pdf.get_y(), 190, 8, "F")
+        pdf.set_text_color(*DARK)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, "  Anomalies", ln=True)
+        pdf.ln(4)
+
+        analysis = None
+        raw = getattr(inspection, "resultat_analyse", None)
+        if raw:
+            try:
+                analysis = json.loads(raw)
+            except Exception:
+                analysis = None
+        anomalies = (analysis or {}).get("anomalies", []) if analysis else []
+        equipements = (analysis or {}).get("equipments", []) if analysis else []
+
+        if equipements:
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_text_color(*DARK)
+            pdf.set_x(14)
+            pdf.cell(0, 6, "Equipements detectes", ln=True)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(80, 80, 80)
+            for eq in equipements:
+                nom = eq.get("nom", "?")
+                qte = eq.get("quantite", 0)
+                try:
+                    conf = f"{round(float(eq.get('confiance', 0)) * 100)}%"
+                except Exception:
+                    conf = "-"
+                pdf.set_x(14)
+                pdf.cell(0, 5, f"- {nom} : {qte} detecte(s)  (confiance {conf})", ln=True)
+            pdf.ln(2)
+
+        if not anomalies:
+            pdf.set_text_color(34, 197, 94)
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_x(14)
+            pdf.cell(0, 8, "Aucune anomalie detectee (conformite respectee).", ln=True)
+        else:
+            pdf.set_text_color(*DARK)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_x(14)
+            pdf.cell(0, 6, f"{len(anomalies)} anomalie(s) signalee(s)", ln=True)
+            pdf.ln(2)
+            pdf.set_fill_color(*BLUE)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_x(14)
+            for label, w in [("Type", 28), ("Equipement", 38), ("Requis", 18), ("Detecte", 18), ("Manquants", 20), ("Gravite", 28)]:
+                pdf.cell(w, 7, label, border=0, fill=True, align="C")
+            pdf.ln(7)
+            toggle = False
+            for a in anomalies[:10]:
+                toggle = not toggle
+                pdf.set_fill_color(250, 250, 250) if toggle else pdf.set_fill_color(255, 255, 255)
+                pdf.set_text_color(*DARK)
+                pdf.set_font("Helvetica", "", 8)
+                pdf.set_x(14)
+                for v, w in [
+                    (str(a.get("type", ""))[:14], 28),
+                    (str(a.get("equipement", ""))[:22], 38),
+                    (str(a.get("requis", "")), 18),
+                    (str(a.get("detecte", "")), 18),
+                    (str(a.get("manquants", "")), 20),
+                    (str(a.get("gravite", "")), 28),
+                ]:
+                    pdf.cell(w, 6, v, border=0, fill=True, align="C")
+                pdf.ln(6)
+
+    # === PIED DE PAGE ===
+    pdf.set_y(-25)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(*GRAY)
+    pdf.cell(0, 10, f"Document genere le {rapport.date_generation} - Plateforme Inspection Scolaire", align="C")
+    pdf.ln(4)
+    pdf.cell(0, 10, f"Page {pdf.page_no()}/{{nb}}", align="C")
+
+    pdf.alias_nb_pages()
+    output = pdf.output(dest="S")
+    # fpdf2 >= 2.7 returns bytes/bytearray for dest="S"; older versions return str.
+    if isinstance(output, str):
+        output = output.encode("latin-1", errors="ignore")
+    return bytes(output)
+

@@ -3,7 +3,8 @@ from pathlib import Path
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 # Par défaut : MySQL via XAMPP (phpMyAdmin)
 DB_USER = os.getenv("DB_USER", "root")

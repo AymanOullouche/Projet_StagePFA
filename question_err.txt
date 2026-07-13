@@ -1,0 +1,9 @@
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0100     10   0      0 100     10      0      6   00:01   00:01              6100     51 100     41 100     10     21      5   00:02   00:01   00:01      6100     51 100     41 100     10     20      4   00:02   00:02              6100     51 100     41 100     10     18      4   00:02   00:02              6
+curl: (6) Could not resolve host: application
+curl: (6) Could not resolve host: Bearer
+curl: (6) Could not resolve host: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkBpbnNwZWN0aW9uLm1hIiwicm9sZSI6IkFETUlOIiwidXNlcl9pZCI6MSwiZXhwIjoxNzgzNjc0ODY4fQ.X0zFUTU6LnG-5S50ARYXSoETKlfyY_EFaPx_ja9-k-4
+curl: (3) unmatched close brace/bracket in URL position 42:
+Quels sont les equipements obligatoires ?}
+                                         ^

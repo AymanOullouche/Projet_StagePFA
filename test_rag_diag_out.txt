@@ -1,0 +1,17 @@
+[RAG] Embeddings: sentence-transformers/all-MiniLM-L6-v2
+[RAG] ChromaDB: D:\ENSIASD\TP S4\Projet_StagePFA\backend\chroma_db
+[RAG] Ollama: llama3
+[RAG] Ollama connecte
+[RAG] Chain prete
+[RAG] Service initialise
+Flags: chromadb=True, embeddings=True, langchain=True
+Project root: D:\ENSIASD\TP S4\Projet_StagePFA\backend
+Chroma dir: D:\ENSIASD\TP S4\Projet_StagePFA\backend\chroma_db
+Chroma dir exists: True
+Creating embeddings...
+Embeddings created
+Creating vector store...
+Vector store created
+Creating ChatOllama...
+ChatOllama created
+All good

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Square,
   Trash2,
   Upload,
   UserRound,
@@ -1064,12 +1065,20 @@ function AssistantView() {
     },
   ]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const abortRef = useRef(null);
+  const submittingRef = useRef(false);
+  const textareaRef = useRef(null);
+  const idCounter = useRef(0);
+  const nextId = () => `${Date.now()}-${idCounter.current++}`;
 
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
         const response = await api.get(endpoints.ragDocuments);
-        setDocuments(response.data.data || []);
+        const payload = response.data.data || {};
+        setDocuments(payload.documents || []);
       } catch (err) {
         // Silently fail - documents may not exist yet
       } finally {
@@ -1093,34 +1102,89 @@ function AssistantView() {
     ]);
   };
 
+  const stopStreaming = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsStreaming(false);
+    setIsThinking(false);
+  };
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  };
+
   const sendQuestion = async (event) => {
-    event.preventDefault();
-    if (!question.trim()) return;
-
-    const userQuestion = question;
+    if (event) event.preventDefault();
+    const userQuestion = question.trim();
+    if (!userQuestion || submittingRef.current) return;
+    submittingRef.current = true;
+    setIsStreaming(true);
+    setIsThinking(true);
     setQuestion("");
-
+    const assistantId = nextId();
+    setMessages((items) => [...items, { id: nextId(), role: "user", text: userQuestion }, { id: assistantId, role: "assistant", text: "" }]);
+    const token = localStorage.getItem("inspection_token");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const writeText = (txt) => setMessages((items) => items.map((m) => (m.id === assistantId ? { ...m, text: m.text + txt } : m)));
+    const fallback = (msg) => setMessages((items) => items.map((m) => (m.id === assistantId ? { ...m, text: m.text || msg } : m)));
     try {
-      const response = await api.post(endpoints.ragAsk, { question: userQuestion });
-      const answer = response.data.data.answer || "Reponse non disponible.";
-      setMessages((items) => [
-        ...items,
-        { id: Date.now(), role: "user", text: userQuestion },
-        { id: Date.now() + 1, role: "assistant", text: answer },
-      ]);
-    } catch (requestError) {
-      const lower = userQuestion.toLowerCase();
-      const fallbackAnswer = lower.includes("informatique")
-        ? "Pour une salle informatique, les normes exigent ordinateurs, tables, chaises, videoprojecteur et extincteur. Les quantites minimales dependent du nombre d'eleves."
-        : lower.includes("anomal")
-          ? "Une anomalie critique doit etre signalee dans le rapport, accompagnee d'une recommandation et d'une action de correction avant cloture."
-          : "La reponse sera fournie par le module RAG lorsque ChromaDB et LangChain seront installes.";
+      const base = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+      const res = await fetch(`${base}/rag/questions/stream`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ question: userQuestion }), signal: controller.signal });
+      if (!res.ok) throw new Error("stream_http_" + res.status);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let gotFirst = false;
+      const processLine = (line) => {
+        if (!line) return;
+        let chunk;
+        try { chunk = JSON.parse(line); } catch { return; }
+        if (chunk.type === "token") {
+          if (!gotFirst) { gotFirst = true; setIsThinking(false); }
+          writeText(chunk.text || "");
+        } else if (chunk.type === "error") {
+          fallback(`Erreur: ${chunk.message}`);
+        }
+      };
 
-      setMessages((items) => [
-        ...items,
-        { id: Date.now(), role: "user", text: userQuestion },
-        { id: Date.now() + 1, role: "assistant", text: fallbackAnswer },
-      ]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf("\n")) >= 0) { processLine(buffer.slice(0, nl).trim()); buffer = buffer.slice(nl + 1); }
+      }
+      if (buffer.trim()) processLine(buffer.trim());
+      if (!gotFirst) fallback("Aucune reponse recue du module RAG.");
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        setMessages((items) =>
+          items.map((m) =>
+            m.id === assistantId && m.text === ""
+              ? { ...m, text: "_(reponse arretee)_" }
+              : m
+          )
+        );
+      } else {
+        const lower = userQuestion.toLowerCase();
+        const fb = lower.includes("informatique")
+          ? "Pour une salle informatique, les normes exigent ordinateurs, tables, chaises, videoprojecteur et extincteur. Les quantites minimales dependent du nombre d'eleves."
+          : lower.includes("anomal")
+            ? "Une anomalie critique doit etre signalee dans le rapport, accompagnee d'une recommandation et d'une action de correction avant cloture."
+            : "La reponse sera fournie par le module RAG lorsque ChromaDB et LangChain seront installes.";
+        fallback(fb);
+      }
+    } finally {
+      setIsStreaming(false);
+      setIsThinking(false);
+      submittingRef.current = false;
+      abortRef.current = null;
     }
   };
 
@@ -1146,7 +1210,7 @@ function AssistantView() {
             documents.map((document) => (
               <div key={document.id} className="rounded-md border border-slate-200 p-3">
                 <p className="text-sm font-semibold">{document.titre}</p>
-                <p className="mt-1 text-xs text-slate-500">{document.dateImport} - {document.statut}</p>
+                <p className="mt-1 text-xs text-slate-500">{document.dateImport || document.date_import} - {document.statut}</p>
               </div>
             ))
           )}
@@ -1169,22 +1233,54 @@ function AssistantView() {
                   : "border border-slate-200 bg-slate-50 text-slate-700"
               }`}
             >
-              {message.text}
+              {message.text ? (
+                message.text
+              ) : message.role === "assistant" && isThinking ? (
+                <span className="inline-flex items-center gap-1 text-slate-400">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+                  <span className="ml-1">reflechit...</span>
+                </span>
+              ) : null}
             </div>
           ))}
         </div>
 
-        <form className="flex gap-3 border-t border-slate-200 p-4" onSubmit={sendQuestion}>
-          <input
-            className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/15"
-            placeholder="Ex: Quelles sont les normes pour une salle informatique ?"
+        <form className="flex items-end gap-3 border-t border-slate-200 p-4" onSubmit={sendQuestion}>
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            className="min-h-[44px] max-h-40 flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/15 disabled:opacity-60"
+            placeholder="Posez votre question (Entree pour envoyer, Maj+Entree pour un saut de ligne)..."
             value={question}
-            onChange={(event) => setQuestion(event.target.value)}
+            onChange={(event) => {
+              setQuestion(event.target.value);
+              autoResize();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                sendQuestion(event);
+              }
+            }}
+            disabled={isStreaming}
           />
-          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-mint px-4 text-sm font-semibold text-white" type="submit">
-            <MessageSquareText size={17} />
-            Envoyer
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={stopStreaming}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-rose-500 px-4 text-sm font-semibold text-white"
+            >
+              <Square size={16} />
+              Arreter
+            </button>
+          ) : (
+            <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-mint px-4 text-sm font-semibold text-white" type="submit">
+              <MessageSquareText size={17} />
+              Envoyer
+            </button>
+          )}
         </form>
       </section>
     </div>
@@ -1211,7 +1307,11 @@ function ReportsView({ reports }) {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Impossible de telecharger le rapport PDF", error);
-      alert("Impossible de telecharger le rapport PDF. Verifiez que le backend est accessible.");
+      const status = error?.response?.status;
+      const msg = status
+        ? `Impossible de telecharger le rapport PDF (erreur ${status}). Verifiez que le backend fonctionne correctement.`
+        : "Impossible de telecharger le rapport PDF. Verifiez que le backend est accessible.";
+      alert(msg);
     }
   };
 
